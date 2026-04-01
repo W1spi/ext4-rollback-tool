@@ -1,289 +1,118 @@
 # ext4-rollback-tool
 
-Инструмент для создания снапшотов и отката системы на ext4, построенный на базе rsync с дедупликацией через hardlink (`--link-dest`).
+Rollback-oriented snapshot toolkit for Linux hosts on ext4, built on top of rsync with hardlink deduplication (`--link-dest`).
 
 ---
 
-## Обзор
+## Overview
 
-ext4-rollback-tool — это **лёгкая и предсказуемая система отката (rollback)** для Linux-сред, использующих ext4 как основную файловую систему.
+ext4-rollback-tool is a **lightweight and predictable rollback system** designed for Linux environments where ext4 is used as the primary filesystem.
 
-Позволяет:
+It allows you to:
 
-- быстро сохранять состояние системы
-- безопасно откатываться после ошибок
-- не использовать тяжёлые решения (ZFS/Btrfs/LVM)
+- capture system state in seconds
+- safely recover from broken configurations or updates
+- rollback Docker infrastructure independently
+- avoid heavy snapshot technologies (Btrfs, ZFS, LVM)
 
-> Сделано для инженеров, которым важны контроль, простота и прозрачность.
-
----
-
-## Зачем этот проект
-
-Большинство решений для снапшотов предполагают:
-
-- Btrfs или ZFS
-- LVM snapshots
-- полноценные backup-системы (borg, restic и т.д.)
-
-Но в реальности:
-
-- ext4 — дефолт почти везде
-- миграция файловой системы часто невозможна
-- backup-инструменты слишком тяжёлые для rollback-задач
-
-Этот инструмент решает:
-
-> **быстрый, локальный и предсказуемый rollback на ext4 без смены файловой системы**
+> This tool focuses on **control, transparency and reliability**, not abstraction.
 
 ---
 
-## Важно: это НЕ backup-инструмент
+## Why this project exists
 
-Этот инструмент:
+Most snapshot solutions assume:
 
-- восстанавливает состояние системы
-- помогает исправлять ошибки
-- работает локально и быстро
+- modern filesystems (Btrfs / ZFS)
+- LVM-based setups
+- full-featured backup systems (borg, restic, etc.)
 
-Этот инструмент НЕ:
+However, in real-world environments:
 
-- защищает от выхода диска из строя
-- защищает от ransomware
-- заменяет off-site backup
+- ext4 is still the default
+- migrating filesystem is often not possible
+- backup tools are too heavy for quick rollback scenarios
 
----
+This project solves:
 
-## Ключевые концепции
-
-### Rollback vs Backup
-
-| Rollback | Backup |
-|--------|--------|
-| быстрый | медленный |
-| локальный | удалённый |
-| восстановление текущего состояния | долгосрочное хранение |
-| минимальные накладные расходы | сложные системы |
-
-Этот проект — строго про rollback.
+> **fast, local and predictable rollback on ext4 without changing your stack**
 
 ---
 
-### Разделение ответственности
+## Key principles
 
-Система и Docker обрабатываются отдельно:
-
-- **system snapshot** → вся ОС
-- **docker snapshot** → только инфраструктура
-
-Преимущества:
-
-- нет лишнего дублирования
-- быстрее снапшоты
-- безопаснее откаты
+- **No magic** — everything is based on rsync
+- **Predictability** — dry-run before every restore
+- **Separation** — system and Docker handled independently
+- **Minimal overhead** — hardlink-based deduplication
 
 ---
 
-## Как работают снапшоты
+## TL;DR
 
-Каждый снапшот создаётся через rsync с дедупликацией:
+- snapshots via `rsync + --link-dest`
+- near-instant creation
+- minimal disk usage
+- safe restore with preview
+- systemd automation support
+
+---
+
+## Quick Start (2–3 minutes)
 
 ```bash
-rsync -a --delete --link-dest=PREVIOUS_SNAPSHOT
-```
+git clone <repo>
+cd ext4-rollback-tool
 
-### Процесс создания
-
-1. Создаётся временная директория:
-```
-.tmp-YYYY-MM-DD_HH-MM-SS
-```
-
-2. Запускается rsync:
-- копируются только изменённые файлы
-- остальные — через hardlink
-
-3. Переименование temp → финальный снапшот
-
-4. Обновление симлинка `LATEST`
-
-### Результат
-
-Каждый снапшот выглядит как полный:
-
-- неизменённые файлы = hardlinks
-- экономия места
-- быстрый rollback
-
----
-
-## Структура проекта
-
-```
-ext4-rollback-tool/
-├── bin/              # скрипты
-├── config/           # конфигурация
-├── systemd/          # сервисы и таймеры
-├── README.md
-├── README.ru.md
-├── LICENSE
-```
-
----
-
-## Структура хранения снапшотов
-
-```
-.infra_snapshots/
-├── docker/
-│   ├── <timestamp>/
-│   └── LATEST
-├── system/
-│   ├── <timestamp>/
-│   └── LATEST
-└── _logs/
-```
-
----
-
-## Конфигурация
-
-Все настройки задаются через `.env`:
-
-```bash
+# configure
 cp config/.env.example config/.env
-```
 
----
+# enable automation
+chmod +x bin/apply-timers.sh
+sudo ./bin/apply-timers.sh
 
-## Переменные окружения
-
-### snapshot-docker.env
-
-| Переменная | Описание |
-|--------|-------------|
-| DEST_BASE | где хранятся снапшоты |
-| KEEP_COUNT | сколько хранить |
-| DOCKER_PROJECTS_DIR | путь к docker-проектам |
-| DOCKER_ETC_DIR | путь к /etc/docker |
-
----
-
-### snapshot-system.env
-
-| Переменная | Описание |
-|--------|-------------|
-| DEST_BASE | хранилище |
-| KEEP_COUNT | количество |
-| SRC | источник (обычно `/`) |
-
----
-
-### restore-docker.env
-
-| Переменная | Описание |
-|--------|-------------|
-| SNAP_BASE | хранилище |
-| LOG_DIR | логи |
-| PROJECTS_DST | куда восстанавливать проекты |
-| ETC_DOCKER_DST | куда восстанавливать конфиги |
-
----
-
-### restore-system.env
-
-| Переменная | Описание |
-|--------|-------------|
-| SNAP_BASE | хранилище |
-| LOG_DIR | логи |
-
----
-
-## Использование
-
-### Создание снапшотов
-
-```bash
-sudo ./bin/snapshot-docker.sh
+# create first snapshot
 sudo ./bin/snapshot-system.sh
 ```
 
 ---
 
-### Восстановление Docker
+## Basic usage
+
+### Create snapshots
 
 ```bash
-sudo ./bin/restore-docker.sh
+sudo ./bin/snapshot-system.sh
+sudo ./bin/snapshot-docker.sh
 ```
 
-Процесс:
-
-1. Выбор снапшота
-2. Dry-run
-3. Подтверждение
-4. Остановка Docker
-5. Восстановление
-6. Запуск Docker
-
----
-
-### Восстановление системы
+### Restore
 
 ```bash
 sudo ./bin/restore-system.sh
+sudo ./bin/restore-docker.sh
 ```
 
-Процесс:
+All restore operations:
 
-1. Выбор снапшота
-2. Dry-run (**обязательно**)
-3. Просмотр удалений
-4. Двойное подтверждение
-5. Восстановление `/`
-
-> Рекомендуется перезагрузка
+- start with dry-run
+- show file changes and deletions
+- require explicit confirmation
 
 ---
 
-## Автоматизация (systemd timers)
+## Automation (systemd timers)
 
-Снапшоты могут запускаться автоматически.
+Snapshots can run automatically via systemd timers.
 
-### Как работает
-
-- `snapshot-system.timer` → система
-- `snapshot-docker.timer` → docker
-- каждый таймер запускает свой `.service`
-
----
-
-### Настройка
-
-```bash
-chmod +x bin/apply-timers.sh
-sudo ./bin/apply-timers.sh
-```
-
----
-
-### Конфигурация
-
-Файл:
-
-```
-config/timers.env
-```
-
-Пример:
+Example schedule:
 
 ```
 SYSTEM_ON_CALENDAR=Sun *-*-* 00:30:00
 DOCKER_ON_CALENDAR=*-*-* 23:30:00
 ```
 
----
-
-### После изменений
+Apply configuration:
 
 ```bash
 sudo ./bin/apply-timers.sh
@@ -291,86 +120,40 @@ sudo ./bin/apply-timers.sh
 
 ---
 
-### Поведение
+## Important
 
-- автозапуск после reboot
-- пропущенные запуски выполняются (`Persistent=true`)
-- ручное вмешательство не требуется
+This is **not a backup tool**.
 
----
+It does NOT:
 
-### Проверка
+- protect from disk failure
+- protect from ransomware
+- replace off-site backups
 
-```bash
-systemctl list-timers
-```
+It is designed purely for:
 
----
-
-### Ручной запуск
-
-```bash
-systemctl start snapshot-system.service
-systemctl start snapshot-docker.service
-```
+> **fast rollback of local system state**
 
 ---
 
-## Понимание rsync dry-run
+## Documentation
 
-Пример:
+Detailed documentation:
 
-```
-f.st......
-```
-
-### Расшифровка
-
-| Символ | Значение |
-|------|--------|
-| f | файл |
-| d | директория |
-| L | симлинк |
-| s | изменён размер |
-| t | изменено время |
-| c | checksum |
-| + | новый файл |
-| *deleting | будет удалён |
+- [Snapshots](docs/snapshots.md)
+- [Restore process](docs/restore.md)
+- [Configuration](docs/configuration.md)
+- [Timers](docs/timers.md)
+- [Safety](docs/safety.md)
 
 ---
 
-## Рекомендации по безопасности
+## When to use this
 
-- ВСЕГДА проверяй dry-run
-- НЕ игнорируй `*deleting`
-- не запускай restore системы вслепую
-- храни снапшоты на отдельном диске
-
----
-
-## Сценарии использования
-
-- сломанные конфиги
-- неудачные обновления
-- проблемы с docker
-- откат инфраструктуры
-
----
-
-## Ограничения
-
-- нет защиты от поломки диска
-- нет off-site backup
-- не для долгого хранения
-
----
-
-## Планы
-
-- гибкие профили снапшотов
-- include/exclude
-- единый CLI
-- install-скрипт
+- you broke system config
+- update failed
+- docker stopped working
+- you want safe rollback without reinstall
 
 ---
 
