@@ -140,11 +140,10 @@ It is designed purely for:
 
 Detailed documentation:
 
-- [Snapshots](docs/snapshots.md)
-- [Restore process](docs/restore.md)
-- [Configuration](docs/configuration.md)
-- [Timers](docs/timers.md)
-- [Safety](docs/safety.md)
+- [Snapshots](docs/snapshots_ru.md)
+- [Restore process](docs/restore_ru.md)
+- [Configuration](docs/configuration_ru.md)
+- [Safety](docs/safety_ru.md)
 
 ---
 
