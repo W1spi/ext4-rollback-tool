@@ -1,0 +1,19 @@
+# Real environment files
+config/*.env
+
+# Keep example configs
+!config/*.env.example
+
+# Common editor / OS junk
+.DS_Store
+Thumbs.db
+
+# Vim / nano / swap files
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+
+# Logs created locally during development
+*.log
