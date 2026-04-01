@@ -1,118 +1,118 @@
 # ext4-rollback-tool
 
-Rollback-oriented snapshot toolkit for Linux hosts on ext4, built on top of rsync with hardlink deduplication (`--link-dest`).
+Инструмент для создания снапшотов и отката системы на ext4, построенный на базе rsync с дедупликацией через hardlink (`--link-dest`).
 
 ---
 
-## Overview
+## Обзор
 
-ext4-rollback-tool is a **lightweight and predictable rollback system** designed for Linux environments where ext4 is used as the primary filesystem.
+ext4-rollback-tool — это **лёгкая и предсказуемая система отката (rollback)** для Linux-сред, использующих ext4 как основную файловую систему.
 
-It allows you to:
+Позволяет:
 
-- capture system state in seconds
-- safely recover from broken configurations or updates
-- rollback Docker infrastructure independently
-- avoid heavy snapshot technologies (Btrfs, ZFS, LVM)
+- сохранять состояние системы за секунды
+- безопасно восстанавливаться после ошибок конфигурации или обновлений
+- отдельно откатывать Docker-инфраструктуру
+- не использовать тяжёлые технологии (Btrfs, ZFS, LVM)
 
-> This tool focuses on **control, transparency and reliability**, not abstraction.
-
----
-
-## Why this project exists
-
-Most snapshot solutions assume:
-
-- modern filesystems (Btrfs / ZFS)
-- LVM-based setups
-- full-featured backup systems (borg, restic, etc.)
-
-However, in real-world environments:
-
-- ext4 is still the default
-- migrating filesystem is often not possible
-- backup tools are too heavy for quick rollback scenarios
-
-This project solves:
-
-> **fast, local and predictable rollback on ext4 without changing your stack**
+> Инструмент делает упор на **контроль, прозрачность и надёжность**, а не на “магические” абстракции.
 
 ---
 
-## Key principles
+## Зачем нужен этот проект
 
-- **No magic** — everything is based on rsync
-- **Predictability** — dry-run before every restore
-- **Separation** — system and Docker handled independently
-- **Minimal overhead** — hardlink-based deduplication
+Большинство решений для снапшотов предполагают:
+
+- современные файловые системы (Btrfs / ZFS)
+- LVM
+- полноценные backup-системы (borg, restic и т.д.)
+
+Но в реальности:
+
+- ext4 остаётся дефолтом
+- миграция файловой системы часто невозможна
+- backup-инструменты слишком тяжёлые для быстрых rollback-сценариев
+
+Этот проект решает:
+
+> **быстрый, локальный и предсказуемый rollback на ext4 без изменения инфраструктуры**
+
+---
+
+## Ключевые принципы
+
+- **Без магии** — всё построено на rsync
+- **Предсказуемость** — dry-run перед каждым restore
+- **Разделение** — система и Docker обрабатываются отдельно
+- **Минимальные накладные расходы** — дедупликация через hardlink
 
 ---
 
 ## TL;DR
 
-- snapshots via `rsync + --link-dest`
-- near-instant creation
-- minimal disk usage
-- safe restore with preview
-- systemd automation support
+- снапшоты через `rsync + --link-dest`
+- почти мгновенное создание
+- минимальное использование диска
+- безопасный restore с предпросмотром
+- поддержка systemd timers
 
 ---
 
-## Quick Start (2–3 minutes)
+## Быстрый старт (2–3 минуты)
 
 ```bash
 git clone <repo>
 cd ext4-rollback-tool
 
-# configure
+# настройка
 cp config/.env.example config/.env
 
-# enable automation
+# включение автоматизации
 chmod +x bin/apply-timers.sh
 sudo ./bin/apply-timers.sh
 
-# create first snapshot
+# первый снапшот
 sudo ./bin/snapshot-system.sh
 ```
 
 ---
 
-## Basic usage
+## Базовое использование
 
-### Create snapshots
+### Создание снапшотов
 
 ```bash
 sudo ./bin/snapshot-system.sh
 sudo ./bin/snapshot-docker.sh
 ```
 
-### Restore
+### Восстановление
 
 ```bash
 sudo ./bin/restore-system.sh
 sudo ./bin/restore-docker.sh
 ```
 
-All restore operations:
+Все операции восстановления:
 
-- start with dry-run
-- show file changes and deletions
-- require explicit confirmation
+- начинаются с dry-run
+- показывают изменения и удаления
+- требуют явного подтверждения
 
 ---
 
-## Automation (systemd timers)
+## Автоматизация (systemd timers)
 
-Snapshots can run automatically via systemd timers.
+Снапшоты могут запускаться автоматически через systemd timers.
 
-Example schedule:
+Пример расписания:
 
 ```
 SYSTEM_ON_CALENDAR=Sun *-*-* 00:30:00
 DOCKER_ON_CALENDAR=*-*-* 23:30:00
 ```
 
-Apply configuration:
+Применение:
 
 ```bash
 sudo ./bin/apply-timers.sh
@@ -120,25 +120,25 @@ sudo ./bin/apply-timers.sh
 
 ---
 
-## Important
+## Важно
 
-This is **not a backup tool**.
+Это **не backup-инструмент**.
 
-It does NOT:
+Он НЕ:
 
-- protect from disk failure
-- protect from ransomware
-- replace off-site backups
+- защищает от поломки диска
+- защищает от ransomware
+- заменяет off-site backup
 
-It is designed purely for:
+Он предназначен только для:
 
-> **fast rollback of local system state**
+> **быстрого отката локального состояния системы**
 
 ---
 
-## Documentation
+## Документация
 
-Detailed documentation:
+Подробная документация:
 
 - [Snapshots](docs/snapshots.md)
 - [Restore process](docs/restore.md)
@@ -148,12 +148,12 @@ Detailed documentation:
 
 ---
 
-## When to use this
+## Когда использовать
 
-- you broke system config
-- update failed
-- docker stopped working
-- you want safe rollback without reinstall
+- сломал конфигурацию
+- неудачное обновление
+- проблемы с Docker
+- нужен быстрый откат без переустановки
 
 ---
 
