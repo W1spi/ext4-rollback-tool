@@ -61,43 +61,31 @@ This project solves:
 ## Quick Start (2–3 minutes)
 
 ```bash
-git clone <repo>
+git clone git@github.com:W1spi/ext4-rollback-tool.git
 cd ext4-rollback-tool
 
-# configure
-cp config/.env.example config/.env
+# prepare config files
+cp config/snapshot-system.env.example config/snapshot-system.env
+cp config/snapshot-docker.env.example config/snapshot-docker.env
+cp config/restore-system.env.example config/restore-system.env
+cp config/restore-docker.env.example config/restore-docker.env
+cp config/timers.env.example config/timers.env
 
-# enable automation
+# review paths and retention
+nano config/snapshot-system.env
+nano config/snapshot-docker.env
+nano config/restore-system.env
+nano config/restore-docker.env
+nano config/timers.env
+
+# enable timers
 chmod +x bin/apply-timers.sh
 sudo ./bin/apply-timers.sh
 
-# create first snapshot
-sudo ./bin/snapshot-system.sh
-```
-
----
-
-## Basic usage
-
-### Create snapshots
-
-```bash
+# create first snapshots
 sudo ./bin/snapshot-system.sh
 sudo ./bin/snapshot-docker.sh
 ```
-
-### Restore
-
-```bash
-sudo ./bin/restore-system.sh
-sudo ./bin/restore-docker.sh
-```
-
-All restore operations:
-
-- start with dry-run
-- show file changes and deletions
-- require explicit confirmation
 
 ---
 
