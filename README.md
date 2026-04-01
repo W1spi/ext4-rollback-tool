@@ -222,7 +222,6 @@ Reboot recommended.
 ## Timers
 
 The project uses systemd timers to run snapshots automatically on a schedule.
-
 Timers are generated from the configuration file:
 
 config/timers.env
@@ -237,7 +236,7 @@ The timers are created and applied using:
 
 sudo ./bin/apply-timers.sh
 
-###Configuration
+### Configuration
 
 You can configure schedules in:
 
@@ -254,7 +253,7 @@ Common patterns:
 Sun *-*-* 00:30:00 → every Sunday at 00:30
 *-*-01 02:00:00 → first day of every month at 02:00
 
-###First run (important)
+### First run (important)
 
 Before using timers, make the script executable and apply configuration:
 
@@ -267,7 +266,7 @@ generate systemd timer files
 reload systemd
 enable and start timers
 
-###After changing schedule
+### After changing schedule
 
 If you modify config/timers.env, you must reapply timers:
 
@@ -280,11 +279,11 @@ timers run automatically after system reboot
 missed runs are executed after startup (Persistent=true)
 no manual interaction is required after initial setup
 
-###Check timers
+### Check timers
 
 systemctl list-timers
 
-###Manual run
+### Manual run
 
 You can trigger snapshots manually:
 
