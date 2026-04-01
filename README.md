@@ -39,25 +39,6 @@ This project solves:
 
 ---
 
-## Key principles
-
-- **No magic** — everything is based on rsync
-- **Predictability** — dry-run before every restore
-- **Separation** — system and Docker handled independently
-- **Minimal overhead** — hardlink-based deduplication
-
----
-
-## TL;DR
-
-- snapshots via `rsync + --link-dest`
-- near-instant creation
-- minimal disk usage
-- safe restore with preview
-- systemd automation support
-
----
-
 ## Quick Start (2–3 minutes)
 
 ```bash
