@@ -2,39 +2,34 @@
 set -Eeuo pipefail
 
 # -----------------------------------------------------------------------------
-# apply-timers.sh
+#   All timer parameters are configured via env file (timers.env).
+#   You can override the default path using ENV_FILE variable:
 #
-# Generates systemd timer files from config/timers.env:
-#   - /etc/systemd/system/snapshot-system.timer
-#   - /etc/systemd/system/snapshot-docker.timer
+#     sudo ENV_FILE=/path/to/timers.env ./apply-timers.sh
 #
-# Then reloads systemd and restarts/enables timers.
+#   After applying, timers are managed via systemd:
 #
-# Usage:
-#   sudo ./bin/apply-timers.sh
-#   sudo ENV_FILE=/path/to/timers.env ./bin/apply-timers.sh
+#     systemctl status snapshot-system.timer
+#     systemctl list-timers
 # -----------------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_ENV_FILE="${SCRIPT_DIR}/../config/timers.env"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+DEFAULT_ENV_FILE="${PROJECT_ROOT}/config/timers.env"
 ENV_FILE="${ENV_FILE:-$DEFAULT_ENV_FILE}"
 
+SYSTEM_SERVICE_PATH="/etc/systemd/system/snapshot-system.service"
 SYSTEM_TIMER_PATH="/etc/systemd/system/snapshot-system.timer"
+
+DOCKER_SERVICE_PATH="/etc/systemd/system/snapshot-docker.service"
 DOCKER_TIMER_PATH="/etc/systemd/system/snapshot-docker.timer"
 
-RED="\033[31m"
-GREEN="\033[32m"
-YELLOW="\033[33m"
-CYAN="\033[36m"
-BOLD="\033[1m"
-RESET="\033[0m"
-
-log() {
-  echo -e "[$(date --iso-8601=seconds)] $*"
-}
+SNAPSHOT_SYSTEM_SCRIPT="${PROJECT_ROOT}/bin/snapshot-system.sh"
+SNAPSHOT_DOCKER_SCRIPT="${PROJECT_ROOT}/bin/snapshot-docker.sh"
 
 die() {
-  echo -e "${RED}${BOLD}ERROR:${RESET} $*" >&2
+  echo "ERROR: $*" >&2
   exit 1
 }
 
@@ -46,7 +41,7 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "'$1' not found"
 }
 
-load_env_file() {
+load_env() {
   [[ -f "${ENV_FILE}" ]] || die "env file not found: ${ENV_FILE}"
 
   set -a
@@ -56,31 +51,68 @@ load_env_file() {
 }
 
 require_var() {
-  local name="$1"
-  [[ -n "${!name:-}" ]] || die "required variable is empty: ${name}"
+  [[ -n "${!1:-}" ]] || die "required variable is empty: $1"
 }
 
 validate_config() {
-  require_var SYSTEM_TIMER_DESCRIPTION
   require_var SYSTEM_ON_CALENDAR
-  require_var SYSTEM_PERSISTENT
-  require_var SYSTEM_RANDOMIZED_DELAY_SEC
-
-  require_var DOCKER_TIMER_DESCRIPTION
   require_var DOCKER_ON_CALENDAR
-  require_var DOCKER_PERSISTENT
-  require_var DOCKER_RANDOMIZED_DELAY_SEC
+}
+
+write_system_service() {
+  cat > "${SYSTEM_SERVICE_PATH}" <<EOF
+[Unit]
+Description=${SYSTEM_TIMER_DESCRIPTION:-System snapshot}
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=${SNAPSHOT_SYSTEM_SCRIPT}
+WorkingDirectory=${PROJECT_ROOT}
+EnvironmentFile=${PROJECT_ROOT}/config/snapshot-system.env
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+# prevent parallel runs
+ExecStartPre=/usr/bin/flock -n /tmp/snapshot-system.lock -c true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+write_docker_service() {
+  cat > "${DOCKER_SERVICE_PATH}" <<EOF
+[Unit]
+Description=${DOCKER_TIMER_DESCRIPTION:-Docker snapshot}
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=${SNAPSHOT_DOCKER_SCRIPT}
+WorkingDirectory=${PROJECT_ROOT}
+EnvironmentFile=${PROJECT_ROOT}/config/snapshot-docker.env
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+ExecStartPre=/usr/bin/flock -n /tmp/snapshot-docker.lock -c true
+
+[Install]
+WantedBy=multi-user.target
+EOF
 }
 
 write_system_timer() {
   cat > "${SYSTEM_TIMER_PATH}" <<EOF
 [Unit]
-Description=${SYSTEM_TIMER_DESCRIPTION}
+Description=${SYSTEM_TIMER_DESCRIPTION:-System snapshot timer}
 
 [Timer]
 OnCalendar=${SYSTEM_ON_CALENDAR}
-Persistent=${SYSTEM_PERSISTENT}
-RandomizedDelaySec=${SYSTEM_RANDOMIZED_DELAY_SEC}
+Persistent=${SYSTEM_PERSISTENT:-true}
+RandomizedDelaySec=${SYSTEM_RANDOMIZED_DELAY_SEC:-5m}
 
 [Install]
 WantedBy=timers.target
@@ -90,12 +122,12 @@ EOF
 write_docker_timer() {
   cat > "${DOCKER_TIMER_PATH}" <<EOF
 [Unit]
-Description=${DOCKER_TIMER_DESCRIPTION}
+Description=${DOCKER_TIMER_DESCRIPTION:-Docker snapshot timer}
 
 [Timer]
 OnCalendar=${DOCKER_ON_CALENDAR}
-Persistent=${DOCKER_PERSISTENT}
-RandomizedDelaySec=${DOCKER_RANDOMIZED_DELAY_SEC}
+Persistent=${DOCKER_PERSISTENT:-true}
+RandomizedDelaySec=${DOCKER_RANDOMIZED_DELAY_SEC:-5m}
 
 [Install]
 WantedBy=timers.target
@@ -105,33 +137,28 @@ EOF
 main() {
   require_root
   require_cmd systemctl
-  require_cmd cat
+  require_cmd flock
 
-  load_env_file
+  load_env
   validate_config
 
-  log "${CYAN}${BOLD}Using env file:${RESET} ${ENV_FILE}"
+  echo "Applying systemd units..."
 
-  log "${CYAN}${BOLD}Writing system timer:${RESET} ${SYSTEM_TIMER_PATH}"
+  write_system_service
+  write_docker_service
+
   write_system_timer
-
-  log "${CYAN}${BOLD}Writing docker timer:${RESET} ${DOCKER_TIMER_PATH}"
   write_docker_timer
 
-  log "${CYAN}${BOLD}Reloading systemd daemon...${RESET}"
   systemctl daemon-reload
 
-  log "${CYAN}${BOLD}Enabling timers...${RESET}"
   systemctl enable snapshot-system.timer snapshot-docker.timer
-
-  log "${CYAN}${BOLD}Restarting timers...${RESET}"
   systemctl restart snapshot-system.timer snapshot-docker.timer
 
-  log "${GREEN}${BOLD}Timers applied successfully.${RESET}"
+  echo "Done."
 
   echo
-  echo "Current timers:"
-  systemctl list-timers --all | grep -E 'snapshot-(system|docker)\.timer' || true
+  systemctl list-timers | grep snapshot || true
 }
 
 main "$@"

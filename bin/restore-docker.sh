@@ -4,20 +4,20 @@ set -euo pipefail
 # -----------------------------------------------------------------------------
 # restore-docker.sh
 #
-# Откатывает Docker-инфру (без volumes):
-#   - /opt/devteam/docker
+# Restores Docker infrastructure (WITHOUT volumes):
+#   - /opt/docker
 #   - /etc/docker
 #
-# Особенности:
-#   - список снапшотов с номерами (1..N) от самого раннего к последнему
-#   - выбор снапшота по номеру
-#   - dry-run (rsync -n) перед применением
-#   - обязательное подтверждение вводом "yes"
-#   - логирование (кто/когда/что/куда)
-#   - цветные предупреждения
-#   - пути можно переопределить через env-файл
+# Features:
+#   - snapshot list with indices (1..N) from oldest to latest
+#   - snapshot selection by index
+#   - dry-run (rsync -n) before applying changes
+#   - mandatory confirmation by typing "yes"
+#   - logging (who/when/what/where)
+#   - colored warnings
+#   - paths can be overridden via env file
 #
-# Пример:
+# Example:
 #   sudo ENV_FILE=/etc/ext4-rollback-tool/restore-docker.env ./restore-docker.sh
 # -----------------------------------------------------------------------------
 
@@ -26,22 +26,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEFAULT_ENV_FILE="${SCRIPT_DIR}/../config/restore-docker.env"
 ENV_FILE="${ENV_FILE:-$DEFAULT_ENV_FILE}"
 
+die() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
 load_env_file() {
-  if [[ -f "${ENV_FILE}" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "${ENV_FILE}"
-    set +a
-  fi
+  [[ -f "${ENV_FILE}" ]] || die "env file not found: ${ENV_FILE}"
+
+  set -a
+  # shellcheck disable=SC1090
+  source "${ENV_FILE}"
+  set +a
 }
 
 load_env_file
 
 # ---------- config ----------
-SNAP_BASE="${SNAP_BASE:-/mnt/nextcloud_data/.infra_snapshots/docker}"
-LOG_DIR="${LOG_DIR:-/mnt/nextcloud_data/.infra_snapshots/_logs}"
+SNAP_ROOT="${SNAP_ROOT:-/var/backups/ext4-rollback}"
 
-PROJECTS_DST="${PROJECTS_DST:-/opt/devteam/docker}"
+SNAP_BASE="${SNAP_BASE:-${SNAP_ROOT}/docker}"
+LOG_DIR="${LOG_DIR:-${SNAP_ROOT}/_logs}"
+
+PROJECTS_DST="${PROJECTS_DST:-/opt/docker}"
 ETC_DOCKER_DST="${ETC_DOCKER_DST:-/etc/docker}"
 
 # ---------- colors ----------
@@ -55,18 +62,11 @@ RESET="\033[0m"
 log_console() { echo -e "$*"; }
 
 require_root() {
-  if [[ "${EUID}" -ne 0 ]]; then
-    echo "ERROR: run as root" >&2
-    exit 1
-  fi
+  [[ "${EUID}" -eq 0 ]] || die "run as root"
 }
 
 require_cmd() {
-  local cmd="$1"
-  command -v "${cmd}" >/dev/null 2>&1 || {
-    echo "ERROR: '${cmd}' not found" >&2
-    exit 1
-  }
+  command -v "$1" >/dev/null 2>&1 || die "'$1' not found"
 }
 
 now_iso() { date --iso-8601=seconds; }

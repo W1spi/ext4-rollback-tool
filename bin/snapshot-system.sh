@@ -6,15 +6,15 @@ set -euo pipefail
 #
 # SYSTEM ONLY snapshot (Docker root excluded)
 #
-# Цель:
-#   - сохранить "всю систему" в рамках системного диска (root FS)
-#   - НЕ залезать в другие примонтированные диски (за это отвечает --one-file-system)
-#   - НЕ пересекаться с docker-контуром (исключаем Docker Root Dir)
-#   - дедупликация через --link-dest
-#   - атомарная запись через .tmp-* (защита от внезапного выключения)
-#   - ротация: KEEP_COUNT самых свежих
+# Purpose:
+#   - save the "entire system" within the system disk (root FS)
+#   - DO NOT traverse into other mounted disks (--one-file-system handles this)
+#   - DO NOT intersect with Docker layer (exclude Docker Root Dir)
+#   - deduplication via --link-dest
+#   - atomic write using .tmp-* (protection against sudden power loss)
+#   - rotation: keep only KEEP_COUNT most recent snapshots
 #
-# Пути и retention можно переопределить через env-файл.
+# Paths and retention can be overridden via env file.
 # -----------------------------------------------------------------------------
 
 # ---------- env loading ----------
@@ -34,7 +34,11 @@ load_env_file() {
 load_env_file
 
 # ---------- config ----------
-DEST_BASE="${DEST_BASE:-/mnt/nextcloud_data/.infra_snapshots/system}"
+SNAP_ROOT="${SNAP_ROOT:-/var/backups/ext4-rollback}"
+
+DEST_BASE="${DEST_BASE:-${SNAP_ROOT}/system}"
+LOG_DIR="${LOG_DIR:-${SNAP_ROOT}/_logs}"
+
 KEEP_COUNT="${KEEP_COUNT:-8}"
 SRC="${SRC:-/}"
 
@@ -50,7 +54,13 @@ CYAN="\033[36m"
 BOLD="\033[1m"
 RESET="\033[0m"
 
-logc() { echo -e "[$(date --iso-8601=seconds)] $*"; }
+LOG_FILE="${LOG_DIR}/snapshot-system-$(date +%F).log"
+
+logc() {
+  local msg="[$(date --iso-8601=seconds)] $*"
+  echo -e "$msg"
+  echo -e "$msg" >> "$LOG_FILE"
+}
 
 require_root() {
   [[ "${EUID}" -eq 0 ]] || {
@@ -69,6 +79,7 @@ require_cmd() {
 cleanup_old() {
   mapfile -t snaps < <(find "${DEST_BASE}" -mindepth 1 -maxdepth 1 -type d -name "20*" | sort)
   local count="${#snaps[@]}"
+
   if (( count <= KEEP_COUNT )); then
     logc "${CYAN}Cleanup:${RESET} nothing to delete (have ${count}, keep ${KEEP_COUNT})"
     return 0
@@ -103,6 +114,7 @@ main() {
   require_cmd sort
 
   mkdir -p "${DEST_BASE}"
+  mkdir -p "${LOG_DIR}"
 
   trap rollback_tmp EXIT INT TERM
 
@@ -117,13 +129,15 @@ main() {
   logc "${CYAN}Destination (tmp):${RESET} ${DEST_TMP}"
   logc "${CYAN}Destination (final):${RESET} ${DEST_FINAL}"
   logc "${CYAN}Keep count:${RESET} ${KEEP_COUNT}"
+
   if [[ -n "${PREV}" && -d "${PREV}" ]]; then
     logc "${CYAN}Using link-dest:${RESET} ${PREV}"
   fi
 
   mkdir -p "${DEST_TMP}"
 
-  local EXCLUDES=(
+  # ---------- excludes ----------
+  EXCLUDES=(
     --exclude="/proc/*"
     --exclude="/sys/*"
     --exclude="/dev/*"
@@ -139,10 +153,10 @@ main() {
     --exclude="/media/*"
     --exclude="/srv/*"
 
-    --exclude="${DEST_BASE}/*"
-    --exclude="/mnt/nextcloud_data/.infra_snapshots/*"
-    --exclude="/mnt/nextcloud_data/*"
+    # Critical: exclude snapshot storage itself (prevents recursion)
+    --exclude="${SNAP_ROOT}/*"
 
+    # Exclude Docker root
     --exclude="/var/lib/docker/*"
   )
 
@@ -168,7 +182,9 @@ main() {
   trap - EXIT INT TERM
 
   logc "${GREEN}${BOLD}System snapshot done${RESET}: ${DEST_FINAL}"
+
   cleanup_old
+
   logc "${GREEN}${BOLD}System snapshot finished OK${RESET}"
 }
 

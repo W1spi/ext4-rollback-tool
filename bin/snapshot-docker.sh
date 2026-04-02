@@ -6,24 +6,22 @@ set -euo pipefail
 #
 # Docker infra snapshot (WITHOUT volumes) + atomic commit
 #
-# Сохраняем:
-#   1) /opt/devteam/docker   — compose/yml/env/config (инфраструктура)
-#   2) /etc/docker           — конфиги Docker daemon
+# We store:
+#   1) /opt/docker        — compose/yml/env/config (infrastructure)
+#   2) /etc/docker        — Docker daemon configuration
 #
-# НЕ сохраняем:
-#   - /var/lib/docker/volumes (volumes исключены намеренно)
+# We DO NOT store:
+#   - /var/lib/docker/volumes (volumes are intentionally excluded)
 #
-# Экономия места (ext4):
-#   - rsync --link-dest на предыдущий снапшот (hardlink дедупликация)
-#     ВАЖНО: link-dest должен указывать на соответствующую поддиректорию
-#     предыдущего снапшота (projects / etc-docker), иначе дедуп не сработает.
+# Space efficiency (ext4):
+#   - rsync --link-dest to previous snapshot (hardlink deduplication)
 #
-# Надёжность:
-#   - сначала пишем в .tmp-<timestamp>, затем атомарно mv -> <timestamp>
-#   - LATEST обновляем только после успешного mv
-#   - старые .tmp-* подчищаем (на случай внезапного отключения питания)
+# Reliability:
+#   - write to .tmp-<timestamp> first, then atomically mv -> <timestamp>
+#   - update LATEST only after successful mv
+#   - clean up stale .tmp-* directories
 #
-# Пути и retention можно переопределить через env-файл.
+# Paths and retention can be overridden via env file.
 # -----------------------------------------------------------------------------
 
 umask 077
@@ -45,10 +43,14 @@ load_env_file() {
 load_env_file
 
 # ---------- config ----------
-DEST_BASE="${DEST_BASE:-/mnt/nextcloud_data/.infra_snapshots/docker}"
+SNAP_ROOT="${SNAP_ROOT:-/var/backups/ext4-rollback}"
+
+DEST_BASE="${DEST_BASE:-${SNAP_ROOT}/docker}"
+LOG_DIR="${LOG_DIR:-${SNAP_ROOT}/_logs}"
+
 KEEP_COUNT="${KEEP_COUNT:-28}"
 
-DOCKER_PROJECTS_DIR="${DOCKER_PROJECTS_DIR:-/opt/devteam/docker}"
+DOCKER_PROJECTS_DIR="${DOCKER_PROJECTS_DIR:-/opt/docker}"
 DOCKER_ETC_DIR="${DOCKER_ETC_DIR:-/etc/docker}"
 
 # ---------- computed ----------
@@ -57,7 +59,13 @@ FINAL_DEST="${DEST_BASE}/${TS}"
 TMP_DEST="${DEST_BASE}/.tmp-${TS}"
 LATEST_LINK="${DEST_BASE}/LATEST"
 
-log() { echo "[$(date --iso-8601=seconds)] $*"; }
+LOG_FILE="${LOG_DIR}/snapshot-docker-$(date +%F).log"
+
+log() {
+  local msg="[$(date --iso-8601=seconds)] $*"
+  echo "$msg"
+  echo "$msg" >> "$LOG_FILE"
+}
 
 require_root() {
   if [[ "${EUID}" -ne 0 ]]; then
@@ -114,6 +122,7 @@ require_cmd ln
 require_cmd sort
 
 mkdir -p "${DEST_BASE}"
+mkdir -p "${LOG_DIR}"
 
 cleanup_tmp
 
@@ -136,7 +145,8 @@ else
   log "No previous snapshot found — first snapshot will be full"
 fi
 
-mkdir -p "${TMP_DEST}"/{projects,etc-docker}
+mkdir -p "${TMP_DEST}/projects"
+mkdir -p "${TMP_DEST}/etc-docker"
 
 NICE_CMD=(nice -n 10 ionice -c2 -n7)
 
@@ -177,7 +187,7 @@ if [[ -d "${DOCKER_ETC_DIR}" ]]; then
     "${DOCKER_ETC_DIR}/" \
     "${TMP_DEST}/etc-docker/"
 else
-  log "WARN: /etc/docker not found: ${DOCKER_ETC_DIR}"
+  log "WARN: docker etc dir not found: ${DOCKER_ETC_DIR}"
 fi
 
 log "Committing snapshot atomically (mv temp -> final)..."
@@ -186,5 +196,7 @@ mv -T "${TMP_DEST}" "${FINAL_DEST}"
 ln -sfn "${FINAL_DEST}" "${LATEST_LINK}"
 
 log "Snapshot done: ${FINAL_DEST}"
+
 cleanup_old
+
 log "Snapshot finished OK"
