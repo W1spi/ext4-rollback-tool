@@ -90,25 +90,6 @@ nano config/timers.env
 
 ---
 
-## Automation (systemd timers)
-
-Snapshots can run automatically via systemd timers.
-
-Example schedule:
-
-```
-SYSTEM_ON_CALENDAR=Sun *-*-* 00:30:00
-DOCKER_ON_CALENDAR=*-*-* 23:30:00
-```
-
-Apply configuration:
-
-```bash
-sudo ./bin/apply-timers.sh
-```
-
----
-
 ## Important
 
 This is **not a backup tool**.
