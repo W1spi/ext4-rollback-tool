@@ -41,7 +41,7 @@ This project solves:
 ## Quick Start (1–2 minutes)
 
 ```bash
-git clone git@github.com:W1spi/ext4-rollback-tool.git
+git clone https://github.com/W1spi/ext4-rollback-tool
 cd ext4-rollback-tool
 
 # prepare config (defaults are safe)
