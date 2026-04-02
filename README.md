@@ -38,34 +38,54 @@ This project solves:
 > **fast, local and predictable rollback on ext4 without changing your stack**
 
 ---
-
-## Quick Start (2–3 minutes)
+## Quick Start (1–2 minutes)
 
 ```bash
 git clone git@github.com:W1spi/ext4-rollback-tool.git
 cd ext4-rollback-tool
 
-# prepare config files
-cp config/snapshot-system.env.example config/snapshot-system.env
-cp config/snapshot-docker.env.example config/snapshot-docker.env
-cp config/restore-system.env.example config/restore-system.env
-cp config/restore-docker.env.example config/restore-docker.env
-cp config/timers.env.example config/timers.env
-
-# review paths and retention
-nano config/snapshot-system.env
-nano config/snapshot-docker.env
-nano config/restore-system.env
-nano config/restore-docker.env
-nano config/timers.env
+# prepare config (defaults are safe)
+cp config/*.env.example config/*.env
 
 # enable timers
 chmod +x bin/apply-timers.sh
 sudo ./bin/apply-timers.sh
 
-# create first snapshots
+# create first snapshots (optional)
 sudo ./bin/snapshot-system.sh
 sudo ./bin/snapshot-docker.sh
+```
+
+### That’s it.
+
+Snapshots are now:
+
+* automatically scheduled via systemd
+* stored under `/var/backups/ext4-rollback`
+* ready for restore at any time
+
+---
+
+### Project location
+
+The project directory can be placed anywhere:
+
+* `/opt/ext4-rollback-tool`
+* `/home/user/ext4-rollback-tool`
+* or any other location
+
+There are no hardcoded paths — all behavior is controlled via configuration files.
+
+---
+
+### Optional: customize configuration
+
+If you want to adjust paths, retention or schedules:
+
+```bash
+nano config/snapshot-system.env
+nano config/snapshot-docker.env
+nano config/timers.env
 ```
 
 ---
